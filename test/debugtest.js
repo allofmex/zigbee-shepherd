@@ -219,8 +219,7 @@ function askAttr(cid, defaultAttrId, callBack) {
 		defaultName = attrDef.key;
 	}
 	rl.question('attr ['+defaultName+']? ', (attrId) => {
-		  if (!attrId) {
-			  
+		  if (!attrId) {	  
 			  if (attrDef !== 'undefined') {
 				  attrId = attrDef.value;
 			  }
@@ -312,15 +311,6 @@ function send(cid, cmd, attrId, type, value, callback) {
 		zclData = [{attrId: attrId}];
 	}
 	ep.foundation(cid, cmd, zclData, callback);
-//	ep.foundation(cid, cmd, [{attrId: zclId.attr(cid, attrId).value}], callback);
-	
-//	ep.foundation(cid, cmd, [{attrId: 48, dataType: 0x20,
-//	    attrData: x}], callback);
-	
-//	  cid: 'msIlluminanceMeasurement',
-//      cmd: 'configReport',
-//      cmdType: 'foundation',
-//      zclData: [{}],
 }
 
 function testAttr(cid, cmd, startId, maxId) {
@@ -337,6 +327,10 @@ function testAttr(cid, cmd, startId, maxId) {
 	    }
 		var statusString = zclId.status(statusCode).key;
 		if (statusCode == 0) {
+			var attrDef = zclId.attr(cid, attrId);
+			if (attrDef) {
+				statusString = statusString + ' ('+attrDef.key+')';
+			}
 			statusString = '\x1b[33m'+statusString+'\x1b[0m';
 		}
 		else {
@@ -370,7 +364,30 @@ function getEp() {
  * 
  *	cid 0x406 (1030) cmd 0x0 (0) attr 0x10 (16)
  	[ { attrId: 16, status: 0, dataType: 33, attrData: 0 } ]
+ 	
+ 	
+msIlluminanceMeasurement
+0 of 2 Status 0: success (measuredValue) result: [{"attrId":0,"status":0,"dataType":33,"attrData":17172}]
+1 of 2 Status 0: success (minMeasuredValue) result: [{"attrId":1,"status":0,"dataType":33,"attrData":1}]
+2 of 2 Status 0: success (maxMeasuredValue) result: [{"attrId":2,"status":0,"dataType":33,"attrData":65534}]
 
+msTemperatureMeasurement
+0 of 50 Status 0: success (measuredValue) result: [{"attrId":0,"status":0,"dataType":41,"attrData":1999}]
+1 of 50 Status 0: success (minMeasuredValue) result: [{"attrId":1,"status":0,"dataType":41,"attrData":-27315}]
+2 of 50 Status 0: success (maxMeasuredValue) result: [{"attrId":2,"status":0,"dataType":41,"attrData":32767}]
+
+genBasic
+0 of 50 Status 0: success (zclVersion) result: [{"attrId":0,"status":0,"dataType":32,"attrData":1}]
+1 of 50 Status 0: success (appVersion) result: [{"attrId":1,"status":0,"dataType":32,"attrData":2}]
+2 of 50 Status 0: success (stackVersion) result: [{"attrId":2,"status":0,"dataType":32,"attrData":1}]
+3 of 50 Status 0: success (hwVersion) result: [{"attrId":3,"status":0,"dataType":32,"attrData":1}]
+4 of 50 Status 0: success (manufacturerName) result: [{"attrId":4,"status":0,"dataType":66,"attrData":"Philips"}]
+5 of 50 Status 0: success (modelId) result: [{"attrId":5,"status":0,"dataType":66,"attrData":"SML001"}]
+6 of 50 Status 0: success (dateCode) result: [{"attrId":6,"status":0,"dataType":66,"attrData":"20160630"}]
+7 of 50 Status 0: success (powerSource) result: [{"attrId":7,"status":0,"dataType":48,"attrData":3}]
+
+msIlluminanceLevelSensing 
+not supported
  * 
  */
  
