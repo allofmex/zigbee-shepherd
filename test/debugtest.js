@@ -94,14 +94,16 @@ function log(text) {
 function ask() {
 	console.log('\n####################\n'+
 			'1: read                     100: printAttrList\n'+
-			'2: send foundation\n3: testRead\n4: attrList\n9: start listening');
+			'2: send foundation\n3: testRead\n4: attrList\n'+
+			'7: testAttrList\n'+
+			'9: start listening');
 	rl.question('Choice? ', (answer) => {
 		  if (answer == 1) {
 			  cmd = zclId.foundation('read').value;
 			  
 			  askCid('msOccupancySensing', (cid) => {//0x0406
 				  askAttr(cid, 'pirOToUDelay', (attrId) => {
-					  write(cid, cmd, attrId);
+					  send(cid, cmd, attrId);
 				  });
 			  });	
 		  }
@@ -123,7 +125,7 @@ function ask() {
 				  console.log(' ');
 				
 				  rl.question('Value? ', (value) => {
-					  write(cid, cmd, attrId, type, value);
+					  send(cid, cmd, attrId, type, value);
 				  });
 			  };
 			  
@@ -137,12 +139,28 @@ function ask() {
 			  });			
 		  }
 		  else if (answer == 3) {
-			  write('msTemperatureMeasurement', 'read', 0);
+			  send('msTemperatureMeasurement', 'read', 0);
 		  }
 		  else if (answer == 4) {
 			  rl.question('eg. genDeviceTempCfg\ncid? ', (cid) => {
 				  printAttrList(cid); 				
 			  });			  
+		  }
+		  else if (answer == 7) {
+			  askCid('msOccupancySensing', (cid) => {
+				  rl.question('startId [0]? ', (startAttrId) => {
+					  if (!startAttrId) {
+						  startAttrId = 0;
+					  }
+					  rl.question('maxId [50]? ', (maxAttrId) => {
+						  if (!maxAttrId) {
+							  maxAttrId = 50;
+						  }
+						  testAttr(cid, 'read', startAttrId, maxAttrId);
+					  });
+				  });				  
+			  });
+			  
 		  }
 		  else if (answer == 9) {
 			  listen();
@@ -250,31 +268,32 @@ function read() {
 	});
 }
 
-function write(cid, cmd, attrId, type, value) {
+function send(cid, cmd, attrId, type, value, callback) {
 	// endpoint.foundation = function (cId, cmd, zclData[, cfg], callback) {};
 	// endpoint.functional = function (cId, cmd, zclData[, cfg], callback) {};
-	
-	callback = function (err, data) {
-		if (err) {
-			console.log(err);
-			ask();
-			return;
-		}
-		
-		console.log('\nR ');
-	    console.log(data);
-	    var statusCode;
-	    var dataType;
-	    if (Array.isArray(data)) {
-		    statusCode = data[0].status;
-		    dataType = data[0].dataType;
-		}
-	    else {
-	    	statusCode = data.statusCode;
-	    }
-	    console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
-	    ask();
-	};
+	if (!callback) {
+		callback = function (err, data) {
+			if (err) {
+				console.log(err);
+				ask();
+				return;
+			}
+			
+			console.log('\nR ');
+		    console.log(data);
+		    var statusCode;
+		    var dataType;
+		    if (Array.isArray(data)) {
+			    statusCode = data[0].status;
+			    dataType = data[0].dataType;
+			}
+		    else {
+		    	statusCode = data.statusCode;
+		    }
+		    console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
+		    ask();
+		};
+	}
 	var ep = getEp();
 
 	var typeValueString = '';
@@ -304,6 +323,40 @@ function write(cid, cmd, attrId, type, value) {
 //      zclData: [{}],
 }
 
+function testAttr(cid, cmd, startId, maxId) {
+	var attrId = parseInt(startId);
+	const maxAttrId = parseInt(maxId);
+
+	callBack = function (err, data) {
+		if (Array.isArray(data)) {
+		    statusCode = data[0].status;
+		    dataType = data[0].dataType;
+		}
+	    else {
+	    	statusCode = data.statusCode;
+	    }
+		var statusString = zclId.status(statusCode).key;
+		if (statusCode == 0) {
+			statusString = '\x1b[33m'+statusString+'\x1b[0m';
+		}
+		else {
+			statusString = '\x1b[31m'+statusString+'\x1b[0m';
+		}
+	    console.log(attrId+' of '+maxAttrId+' Status '+statusCode+": "+statusString +' result: '+JSON.stringify(data));
+	    
+	    attrId = attrId+1;
+	    if (attrId > maxAttrId) {
+	    	ask();
+	    	return;
+	    }
+	    testAttrRun();
+	}
+	testAttrRun = function() {
+		send(cid, cmd, attrId, null, null, callBack);		
+	}
+	testAttrRun();
+}
+
 function getEp() {
    var ep = zserver.find('0x00178801032a6277', 2);    // returns undefined if not found
    return ep;
@@ -312,6 +365,8 @@ function getEp() {
 /*
  * Original values:
  * pirOToUDelay =  attrId: 0, dataType: 41, attrData: 2126
+	18: pirUToOThreshold = unsupAttribute
+
  * 
  *	cid 0x406 (1030) cmd 0x0 (0) attr 0x10 (16)
  	[ { attrId: 16, status: 0, dataType: 33, attrData: 0 } ]
