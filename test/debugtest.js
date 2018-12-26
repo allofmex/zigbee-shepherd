@@ -92,11 +92,18 @@ function log(text) {
 
 
 function ask() {
-	console.log('\n####################\n1: read\n2: send foundation\n3: testRead\n4: attrList\n9: start listening');
+	console.log('\n####################\n'+
+			'1: read                     100: printAttrList\n'+
+			'2: send foundation\n3: testRead\n4: attrList\n9: start listening');
 	rl.question('Choice? ', (answer) => {
 		  if (answer == 1) {
-			  loop();
-			  ask;
+			  cmd = zclId.foundation('read').value;
+			  
+			  askCid('msOccupancySensing', (cid) => {//0x0406
+				  askAttr(cid, 'pirOToUDelay', (attrId) => {
+					  write(cid, cmd, attrId);
+				  });
+			  });	
 		  }
 		  else if (answer == 2) {
 			  console.log("run");
@@ -119,40 +126,15 @@ function ask() {
 					  write(cid, cmd, attrId, type, value);
 				  });
 			  };
-			  var defaultCid = zclId.cluster('msOccupancySensing').value; ;//0x0406
-			  rl.question('cid? ['+zclId.cluster(defaultCid).key+'] ', (cid) => {
-				  if (!cid) {
-					  cid = defaultCid;
-				  }
-				  else {
-					  cid = parseInt(cid);
-				  }
-				  console.log(' ');
-				  printCmdList();
-				  rl.question('\ncmd? [read] ', (cmd) => {
-					  if (!cmd) {
-						  cmd = zclId.foundation('read').value;
-					  }
-					  else {
-						  cmd = parseInt(cmd);
-					  }
-					  console.log(' ');
-					  printAttrList(cid);
-					  var defaultAttrId = 0;//'measuredValue';
-					  rl.question('attr ['+zclId.attr(cid, defaultAttrId).key+']? ', (attrId) => {
-						  if (!attrId) {
-							  attrId = defaultAttrId;
-						  }
-						  else {
-							  attrId = parseInt(attrId);
-						  }
+			  
+			  askCmd('read', (cmd) => {
+				  askCid('msOccupancySensing', (cid) => {//0x0406
+					  askAttr(cid, 'pirOToUDelay', (attrId) => { //'pirOToUDelay'
 						  askType(cid, cmd, attrId);
-						  
 					  });
-					 
-				  });
-			  });
-				
+				  });	
+				  
+			  });			
 		  }
 		  else if (answer == 3) {
 			  write('msTemperatureMeasurement', 'read', 0);
@@ -166,6 +148,13 @@ function ask() {
 			  listen();
 			  ask();
 		  }
+		  else if (answer == 100) {
+			  askCid('msOccupancySensing', (cid) => {
+				  console.log('');
+				  printAttrList(cid);
+				  ask();
+			  });
+		  }
 		  else {
 			  console.log("undefined");
 			  ask();
@@ -173,6 +162,57 @@ function ask() {
 //		  rl.close();
 
 		});
+}
+
+function askCmd(defCmd, callBack) {
+	console.log(' ');
+	printCmdList();
+	var defaultCmd = zclId.foundation(defCmd).value; ;
+	rl.question('cmd? ['+zclId.foundation(defaultCmd).key+'] ', (cmd) => {
+		  if (!cmd) {
+			  cmd = zclId.foundation(defCmd).value;
+		  }
+		  else {
+			  cmd = parseInt(cmd);
+		  }
+		  callBack(cmd);
+	});
+}
+
+function askCid(defCid, callBack) {
+	var defaultCid = zclId.cluster(defCid).value; ;
+	rl.question('cid? ['+zclId.cluster(defaultCid).key+'] ', (cid) => {
+		  if (!cid) {
+			  cid = defaultCid;
+		  }
+		  else {
+			  cid = parseInt(cid);
+		  }
+		  callBack(cid);
+	});
+}
+
+function askAttr(cid, defaultAttrId, callBack) {
+	console.log(' ');
+	printAttrList(cid);
+	var attrDef = zclId.attr(cid, defaultAttrId);
+	var defaultName = 'not found';
+	if (attrDef !== 'undefined') {
+		defaultName = attrDef.key;
+	}
+	rl.question('attr ['+defaultName+']? ', (attrId) => {
+		  if (!attrId) {
+			  
+			  if (attrDef !== 'undefined') {
+				  attrId = attrDef.value;
+			  }
+			  attrId = attrId;
+		  }
+		  else {
+			  attrId = parseInt(attrId);
+		  }
+		  callBack(attrId);		  
+	});
 }
 
 function printCmdList() {	
@@ -188,7 +228,7 @@ function printAttrList(cid) {
 	var attrList = zclId.attrList(cid);
 	  for (var i=0; i< attrList.length; i++) {
 		  var id = attrList[i].attrId;
-		  console.log(id+ ': '+ zclId.attr(cid, id).key  );
+		  console.log('0x'+id.toString(16)+' ' +id+ ': '+ zclId.attr(cid, id).key  );
 	  }
 }
 
@@ -242,7 +282,7 @@ function write(cid, cmd, attrId, type, value) {
 		typeValueString = ' type 0x' + type.toString(16)+ ' ('+value
 				+') value 0x' + value.toString(16)+ ' ('+value+')';
 	}
-	log('Write cid 0x' + cid.toString(16)+' ('+cid+') cmd 0x' + cmd.toString(16)+ ' ('+cmd 
+	log('Send cid 0x' + cid.toString(16)+' ('+cid+') cmd 0x' + cmd.toString(16)+ ' ('+cmd 
 			+ ') attr 0x' + attrId.toString(16)+ ' ('+attrId+ ')' + typeValueString);
 	//zclId.attr(cid, attrId).value
 	var zclData;
