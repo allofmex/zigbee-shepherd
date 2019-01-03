@@ -192,8 +192,8 @@ defResultCallback = function (err, data) {
 
 function ask() {
 	console.log('\n####################\n'+
-			'1: read                     100: printAttrList\n'+
-			'2: send foundation\n'+
+			'1: read                     100: printCidList\n'+
+			'2: send foundation          101: printAttrList\n'+
 			'3: testRead\n'+
 			'4: attrList\n'+
 			'5: configReporting\n'+
@@ -320,16 +320,24 @@ function ask() {
 		                  maxAttrIds: 100, 
 //		                  statusId: 0,
 		          };
+		          try {
 		          var ep = getEp();
-		          ep.foundation(cid, 'discover', zclData, defResultCallback);
+		              ep.foundation(cid, 'discover', zclData, defResultCallback);
+		          } catch (exception) {
+		              console.log(exception);
+		          }
 		      });
 		  }
 		  else if (answer == 100) {
-			  askCid('msOccupancySensing', (cid) => {
-				  console.log('');
-				  printAttrList(cid);
-				  ask();
-			  });
+		      printCidList();	
+		      ask();
+		  }
+		  else if(answer == 101) {
+		      askCid('msOccupancySensing', (cid) => {
+                  console.log('');
+                  printAttrList(cid);
+                  ask();
+              });
 		  }
 		  else {
 			  console.log("undefined");
@@ -378,7 +386,7 @@ function askAttr(cid, defaultAttrId, callBack) {
 	}
 	rl.question('attr ['+defaultName+']? ', (attrId) => {
 		  if (!attrId) {	  
-			  if (attrDef !== 'undefined') {
+			  if (typeof attrDef !== 'undefined') {
 				  attrId = attrDef.value;
 			  }
 			  attrId = attrId;
@@ -401,6 +409,21 @@ function askRaw(question, callBack) {
 		  }
 		  callBack(value);		  
 	});
+}
+
+function printCidList() {
+    printList(zclId._common.clusterId);
+}
+
+function printList(list) {
+    var keys = Object.keys(list);
+    for (var i=0; i< keys.length; i++) {
+        var key = keys[i];      
+        var item = list[key];
+        if (item) {
+            console.log(key+ ': '+ item  );
+        }
+    }
 }
 
 function printCmdList() {	
@@ -621,7 +644,8 @@ msIlluminanceLevelSensing
 not supported
 
 
-
+hue illumination issue
+https://community.smartthings.com/t/beta-hue-motion-sensor-beta-no-hue-bridge/62286/81
  * 
  */
  
