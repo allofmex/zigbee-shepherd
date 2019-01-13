@@ -1,6 +1,10 @@
 
 var ZShepherd = require('zigbee-shepherd');
-var zserver = new ZShepherd('/dev/ttyACM0', { sp: {baudRate: 115200, debug: true}, dbPath: '../../../iobroker-data/zigbee_0/shepherd.db'});
+var zserver = new ZShepherd('/dev/ttyACM0',
+        {   net: {panId: 0x1a62, channelList: [11]},
+            sp: {baudRate: 115200, debug: true}, 
+        dbPath: '/tmp/shepherd.db'});
+//        dbPath: '../../../iobroker-data/zigbee_0/shepherd.db'});
 // https://github.com/zigbeer/zcl-id/wiki
 var zclId = require('zcl-id');
 var util = require('util');
@@ -21,6 +25,9 @@ const logset =  {
       };
 var filterActive = false;
 var filterCid = 'msOccupancySensing';
+
+var activeIeee = null;
+var activeEp = 2;
 
 var exit_on_sigint = true;
 process.on('SIGINT', function() {
@@ -56,6 +63,10 @@ zserver.on('ready', function () {
 
 zserver.on('error', function(err) {
     log('error',err);
+});
+
+zserver.on('permitJoining', function(time) {
+    log('Time left: '+time, 'permitJoining');
 });
 
 zserver.start(function (err) {
@@ -106,246 +117,272 @@ const cidFilter = function(data) {
 }
 
 function listen() {
-	zserver.on('ind:incoming', function (dev, data) {
-		var cid = dev.endpoints[2].clusters.msOccupancySensing.dir.cid;
-		if (cidFilter(data)) {		return;		}
-	    log(dev.endpoints[2].clusters.msOccupancySensing, 'ind:incoming');
-	});
-	zserver.on('ind:changed', function (dev, data) {
-		if (cidFilter(data)) {		return;		}
-	    log(data, 'ind:changed');
-	});
-	zserver.on('ind:status', function (dev, data) {
-		if (cidFilter(data)) {		return;		}
-	    log(data, 'ind:status');
-	});
-	zserver.on('ind:statusChange', function (dev, data) {
-		if (cidFilter(data)) {		return;		}
-	    log(data, 'ind:statusChange');
-	});
-	zserver.on('ind:attReport', function (dev, data) {
-		if (cidFilter(data)) {		return;		}
-	    log(data, 'ind:attReport');
-	});
-	zserver.on('ind:reported', function (dev, cid, data2) {
-		if (cidFilter(cid)) {		return;		}
-	    log(data2, 'ind:reported ', zclId.cluster(cid).key);
-	});
-	
-	zserver.on('ind:cmd', function (dev, data) {
-		if (cidFilter(cid)) {		return;		}
-	    log(data, 'ind:cmd', zclId.cluster(cid).key);
-	});
-	zserver.on('ind:interview', function (dev, data) {
-		if (cidFilter(data)) {		return;		}
-	    log(data, 'ind:interview');
-	});
-	
+    zserver.on('ind:incoming', function (dev, data) {
+        var cid = dev.endpoints[2].clusters.msOccupancySensing.dir.cid;
+        if (cidFilter(data)) {		return;		}
+        log(dev.endpoints[2].clusters.msOccupancySensing, 'ind:incoming');
+    });
+    zserver.on('ind:changed', function (dev, data) {
+        if (cidFilter(data)) {		return;		}
+        log(data, 'ind:changed');
+    });
+    zserver.on('ind:status', function (dev, data) {
+        if (cidFilter(data)) {		return;		}
+        log(data, 'ind:status');
+    });
+    zserver.on('ind:statusChange', function (dev, data) {
+        if (cidFilter(data)) {		return;		}
+        log(data, 'ind:statusChange');
+    });
+    zserver.on('ind:attReport', function (dev, data) {
+        if (cidFilter(data)) {		return;		}
+        log(data, 'ind:attReport');
+    });
+    zserver.on('ind:reported', function (dev, cid, data2) {
+        if (cidFilter(cid)) {		return;		}
+        log(data2, 'ind:reported ', zclId.cluster(cid).key);
+    });
+
+    zserver.on('ind:cmd', function (dev, data) {
+        if (cidFilter(cid)) {		return;		}
+        log(data, 'ind:cmd', zclId.cluster(cid).key);
+    });
+    zserver.on('ind:interview', function (dev, data) {
+        if (cidFilter(data)) {		return;		}
+        log(data, 'ind:interview');
+    });
+
 }
 
-
+function getEp() {
+    if (activeIeee == null) {
+        activeIeee = zserver.list().length > 1 ?  zserver.list()[1].ieeeAddr : null;
+    }
+    if (activeIeee == null) {
+        return null;
+    }
+    var ep = zserver.find(activeIeee, activeEp);    // returns undefined if not found
+    return ep;
+}
 
 function log(data, tag, cid) {
-	var time = new Date();
-	if (typeof tag === 'undefined') {
-		tag = '';
-	}
-	if (typeof cid !== 'undefined') {
-		cid = cid.padEnd(30, ' ');
-		tag = tag.padEnd(15, ' ') + cid;	
-	}
-	else {		
-		tag = tag.padEnd(45, ' ');
-	}
-	process.stdout.write("\n"+time.toISOString()+"   "+tag);
-	process.stdout.write(util.inspect(data, logset));
+    var time = new Date();
+    if (typeof tag !== 'string') {
+        tag = '';
+    }
+    if (typeof cid !== 'undefined') {
+        cid = cid.padEnd(30, ' ');
+        tag = tag.padEnd(15, ' ') + cid;	
+    }
+    else {		
+        tag = tag.padEnd(45, ' ');
+    }
+    process.stdout.write("\n"+time.toISOString()+"   "+tag);
+    process.stdout.write(util.inspect(data, logset));
 }
 
 defResultCallback = function (err, data) {
-	if (err) {
-		console.log(err);
-		ask();
-		return;
-	}
-	
-	console.log('\nR ');
+    if (err) {
+        console.log(err);
+        ask();
+        return;
+    }
+
+    console.log('\nR ');
     console.log(data);
     var statusCode = -1;
     var dataType;
     if (Array.isArray(data)) {
-	    statusCode = data[0].status;
-	    dataType = data[0].dataType;
-	}
-    else if (data) {
-    	statusCode = data.statusCode;
+        statusCode = data[0].status;
+        dataType = data[0].dataType;
     }
-    
+    else if (data) {
+        statusCode = data.statusCode;
+    }
+
     if (statusCode !== -1) {
-    	console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
+        console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
     }
     else {
-    	console.log("Empty callback!");
+        console.log("Empty callback!");
     }
     ask();
 };
 
 
 function ask() {
-	console.log('\n####################\n'+
-			'1: read                     100: printCidList\n'+
-			'2: send foundation          101: printAttrList\n'+
-			'3: testRead\n'+
-			'4: attrList\n'+
-			'5: configReporting\n'+
-			'6: changeEndpoint\n'+
-			'7: testAttrList\n'+
-			'8: toggleFilter\n'+
-			'9: start listening\n'+
-			'10: discover\n');
-	rl.question('Choice? ', (answer) => {
-	    exit_on_sigint = false;
-		  if (answer == 1) {
-			  cmd = zclId.foundation('read').value;
-			  
-			  askCid('msOccupancySensing', (cid) => {//0x0406
-				  askAttr(cid, 'pirOToUDelay', (attrId) => {
-					  send(cid, cmd, attrId);
-				  });
-			  });	
-		  }
-		  else if (answer == 2) {
-			  console.log("run");
-//			  var defaultCid = 'msTemperatureMeasurement';//0x0402
-			  askType = function (cid, cmd, attrId) {
-				  console.log(' ');
-				  printTypeList(cid);
-				  rl.question('Type? ', (type) => {
-					  if (type) {
-						  type = parseInt(type);
-					  }
-					  askValue(cid, cmd, attrId, type);
-				  });
-			  };
-			  
-			  askValue = function (cid, cmd, attrId, type) {
-				  console.log(' ');
-				
-				  rl.question('Value? ', (value) => {
-					  send(cid, cmd, attrId, type, value);
-				  });
-			  };
-			  
-			  askCmd('read', (cmd) => {
-				  askCid('msOccupancySensing', (cid) => {//0x0406
-					  askAttr(cid, 'pirOToUDelay', (attrId) => { //'pirOToUDelay'
-						  askType(cid, cmd, attrId);
-					  });
-				  });	
-				  
-			  });			
-		  }
-		  else if (answer == 3) {
-			  send('msTemperatureMeasurement', 'read', 0);
-		  }
-		  else if (answer == 4) {
-			  rl.question('eg. genDeviceTempCfg\ncid? ', (cid) => {
-				  printAttrList(cid); 				
-			  });			  
-		  }
-		  else if (answer == 5) {
-			  
-			  askCid('msOccupancySensing', (cid) => {//0x0406
-				  askAttr(cid, 'pirOToUDelay', (attrId) => {
-					  askRaw('MinValue? ', (minVal) => {
-						  askRaw('MaxValue? ', (maxVal) => {
-							  askRaw('ChangeValue? ', (chgBal) => {
-								  var ep = getEp();
-								  var result = ep.report(cid, attrId, minVal, maxVal, chgBal, defResultCallback);
-//								  if (result) {
-									  console.log(result);
-//								  }
-							  });
-						  });
-						 
-					  });
-					  
-					 
-				  });
-			  });	
-		  }
-		  else if (answer == 6) {
-		      askRaw('Endpoint? ', (ep) => {
-		          if (ep) {
-		              activeEp = ep;
-		              console.log('ActiveEp set to '+activeEp);
-		              ask();
-		          }
-		      });
-		  }
-		  else if (answer == 7) {
-			  askCid('msOccupancySensing', (cid) => {
-				  rl.question('startId [0]? ', (startAttrId) => {
-					  if (!startAttrId) {
-						  startAttrId = 0;
-					  }
-					  rl.question('maxId [50]? ', (maxAttrId) => {
-						  if (!maxAttrId) {
-							  maxAttrId = 50;
-						  }
-						  testAttr(cid, 'read', startAttrId, maxAttrId);
-					  });
-				  });				  
-			  });
-			  
-		  }
-		  else if (answer == 8) {
-			  filterActive = !filterActive;
-			  if (filterActive) {
-				  console.log('Filter on ('+zclId.cluster(filterCid).value + ', '+zclId.cluster(filterCid).key +')');
-				  
-			  }
-			  else {
-				  console.log('Filter off');
-			  }
-			  ask();
-		  }
-		  else if (answer == 9) {
-			  listen();
-			  ask();
-		  }
-		  else if (answer == 10) {
-		      askCid('msOccupancySensing', (cid) => {
-		          var zclData = {
-		                  startAttrId: 0, 
-		                  maxAttrIds: 100, 
-//		                  statusId: 0,
-		          };
-		          try {
-		          var ep = getEp();
-		              ep.foundation(cid, 'discover', zclData, defResultCallback);
-		          } catch (exception) {
-		              console.log(exception);
-		          }
-		      });
-		  }
-		  else if (answer == 100) {
-		      printCidList();	
-		      ask();
-		  }
-		  else if(answer == 101) {
-		      askCid('msOccupancySensing', (cid) => {
-                  console.log('');
-                  printAttrList(cid);
-                  ask();
-              });
-		  }
-		  else {
-			  console.log("undefined");
-			  ask();
-		  }
-//		  rl.close();
+    getEp();
+    console.log('\n####################\n'+
+            '## Active: '+activeIeee+' ep '+activeEp+'\n'+
+            '0: Choose device\n'+
+            '1: read                     100: printCidList\n'+
+            '2: send foundation          101: printAttrList\n'+
+            '3: testRead\n'+
+            '4: attrList\n'+
+            '5: configReporting\n'+
+            '6: changeEndpoint\n'+
+            '7: testAttrList\n'+
+            '8: toggleFilter\n'+
+            '9: start listening\n'+
+            '10: discover\n'+
+            '20: startPair');
+    rl.question('Choice? ', (answer) => {
+        exit_on_sigint = false;
+        if (answer == 0) {
+            const devList = zserver.list();
+            for (var i=0; i<devList.length; i++) {
+                var dev = devList[i];
+                console.log(i+': '+dev.manufName+' '+dev.modelId+' '+dev.ieeeAddr);
+            }
+            rl.question('Select device? ', (answer) => {
+                activeIeee = devList[answer].ieeeAddr;
+                ask();
+            });
+        }
+        else if (answer == 1) {
+            cmd = zclId.foundation('read').value;
 
-		});
+            askCid('msOccupancySensing', (cid) => {//0x0406
+                askAttr(cid, 'pirOToUDelay', (attrId) => {
+                    send(cid, cmd, attrId);
+                });
+            });	
+        }
+        else if (answer == 2) {
+            console.log("run");
+//          var defaultCid = 'msTemperatureMeasurement';//0x0402
+            askType = function (cid, cmd, attrId) {
+                console.log(' ');
+                printTypeList(cid);
+                rl.question('Type? ', (type) => {
+                    if (type) {
+                        type = parseInt(type);
+                    }
+                    askValue(cid, cmd, attrId, type);
+                });
+            };
+
+            askValue = function (cid, cmd, attrId, type) {
+                console.log(' ');
+                rl.question('Value? ', (value) => {
+                    send(cid, cmd, attrId, type, value);
+                });
+            };
+
+            askCmd('read', (cmd) => {
+                askCid('msOccupancySensing', (cid) => {//0x0406
+                    askAttr(cid, 'pirOToUDelay', (attrId) => { //'pirOToUDelay'
+                        askType(cid, cmd, attrId);
+                    });
+                });	
+            });			
+        }
+        else if (answer == 3) {
+            send('msTemperatureMeasurement', 'read', 0);
+        }
+        else if (answer == 4) {
+            rl.question('eg. genDeviceTempCfg\ncid? ', (cid) => {
+                printAttrList(cid); 				
+            });			  
+        }
+        else if (answer == 5) {
+            askCid('msOccupancySensing', (cid) => {//0x0406
+                askAttr(cid, 'pirOToUDelay', (attrId) => {
+                    askRaw('MinValue? ', (minVal) => {
+                        askRaw('MaxValue? ', (maxVal) => {
+                            askRaw('ChangeValue? ', (chgBal) => {
+                                var ep = getEp();
+                                var result = ep.report(cid, attrId, minVal, maxVal, chgBal, defResultCallback);
+//                              if (result) {
+                                console.log(result);
+//                              }
+                            });
+                        });
+
+                    });
+
+
+                });
+            });	
+        }
+        else if (answer == 6) {
+            askRaw('Endpoint? ', (ep) => {
+                if (ep) {
+                    activeEp = ep;
+                    console.log('ActiveEp set to '+activeEp);
+                    ask();
+                }
+            });
+        }
+        else if (answer == 7) {
+            askCid('msOccupancySensing', (cid) => {
+                rl.question('startId [0]? ', (startAttrId) => {
+                    if (!startAttrId) {
+                        startAttrId = 0;
+                    }
+                    rl.question('maxId [50]? ', (maxAttrId) => {
+                        if (!maxAttrId) {
+                            maxAttrId = 50;
+                        }
+                        testAttr(cid, 'read', startAttrId, maxAttrId);
+                    });
+                });				  
+            });
+        }
+        else if (answer == 8) {
+            filterActive = !filterActive;
+            if (filterActive) {
+                console.log('Filter on ('+zclId.cluster(filterCid).value + ', '+zclId.cluster(filterCid).key +')');
+            }
+            else {
+                console.log('Filter off');
+            }
+            ask();
+        }
+        else if (answer == 9) {
+            listen();
+            ask();
+        }
+        else if (answer == 10) {
+            askCid('msOccupancySensing', (cid) => {
+                var zclData = {
+                        startAttrId: 0, 
+                        maxAttrIds: 100, 
+//                      statusId: 0,
+                };
+                try {
+                    var ep = getEp();
+                    ep.foundation(cid, 'discover', zclData, defResultCallback);
+                } catch (exception) {
+                    console.log(exception);
+                }
+            });
+        }
+        else if (answer == 20) {
+            zserver.permitJoin(60, function (err) {
+                if (err)
+                    console.log(err);
+            }); 
+            ask();
+        }
+        else if (answer == 100) {
+            printCidList();	
+            ask();
+        }
+        else if(answer == 101) {
+            askCid('msOccupancySensing', (cid) => {
+                console.log('');
+                printAttrList(cid);
+                ask();
+            });
+        }
+        else {
+            console.log("undefined");
+            ask();
+        }
+//      rl.close();
+
+    });
 }
 
 function askCmd(defCmd, callBack) {
@@ -495,7 +532,7 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 				+') value 0x' + value.toString(16)+ ' ('+value+')';
 	}
 	if (log) {
-	    console.log('Send cid 0x' + cid.toString(16)+' ('+cid+') cmd 0x' + cmd.toString(16)+ ' ('+cmd 
+	    console.log('Send to '+activeIeee+' cid 0x' + cid.toString(16)+' ('+cid+') cmd 0x' + cmd.toString(16)+ ' ('+cmd 
 	            + ') attr 0x' + attrId.toString(16)+ ' ('+attrId+ ')' + typeValueString);
 	}
 	//zclId.attr(cid, attrId).value
@@ -515,49 +552,48 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 
 
 function testAttr(cid, cmd, startId, maxId) {
-	var attrId = parseInt(startId);
-	const maxAttrId = parseInt(maxId);
+    var attrId = parseInt(startId);
+    const maxAttrId = parseInt(maxId);
 
-	callBack = function (err, data) {
-		if (Array.isArray(data)) {
-		    statusCode = data[0].status;
-		    dataType = data[0].dataType;
-		}
-	    else if (typeof data !== 'undefined'){
-	    	statusCode = data.statusCode;
-	    }
-		var statusString = zclId.status(statusCode).key;
-		if (statusCode == 0) {
-			var attrDef = zclId.attr(cid, attrId);
-			if (attrDef) {
-				statusString = statusString + ' ('+attrDef.key+')';
-			}
-			statusString = '\x1b[33m'+statusString+'\x1b[0m';
-		}
-		else {
-			statusString = '\x1b[31m'+statusString+'\x1b[0m';
-		}
-	    console.log(attrId+' of '+maxAttrId+' Status '+statusCode+": "+statusString +' result: '+JSON.stringify(data));
-	    
-	    attrId = attrId+1;
-	    if (attrId > maxAttrId) {
-	    	ask();
-	    	return;
-	    }
-	    testAttrRun();
-	}
-	testAttrRun = function() {
-		send(cid, cmd, attrId, null, null, callBack, false);		
-	}
-	testAttrRun();
+    callBack = function (err, data) {
+        var statusCode;
+        if (Array.isArray(data)) {
+            statusCode = data[0].status;
+            dataType = data[0].dataType;
+        }
+        else if (typeof data !== 'undefined'){
+            statusCode = data.statusCode;
+        }
+        else {
+            console.log(err);
+            console.log(data);
+        }
+        var statusString = zclId.status(statusCode).key;
+        if (statusCode == 0) {
+            var attrDef = zclId.attr(cid, attrId);
+            if (attrDef) {
+                statusString = statusString + ' ('+attrDef.key+')';
+            }
+            statusString = '\x1b[33m'+statusString+'\x1b[0m';
+        }
+        else {
+            statusString = '\x1b[31m'+statusString+'\x1b[0m';
+        }
+        console.log(attrId+' of '+maxAttrId+' Status '+statusCode+": "+statusString +' result: '+JSON.stringify(data));
+
+        attrId = attrId+1;
+        if (attrId > maxAttrId) {
+            ask();
+            return;
+        }
+        testAttrRun();
+    }
+    testAttrRun = function() {
+        send(cid, cmd, attrId, null, null, callBack, false);		
+    }
+    testAttrRun();
 }
 
-var activeEp = 2;
-
-function getEp() {
-   var ep = zserver.find('0x00178801032a6277', activeEp);    // returns undefined if not found
-   return ep;
-}
 
 /*
  * Original values:
