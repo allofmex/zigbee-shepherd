@@ -1,9 +1,9 @@
-
+const path = '/tmp/';
 var ZShepherd = require('zigbee-shepherd');
 var zserver = new ZShepherd('/dev/ttyACM0',
         {   net: {panId: 0x1a62, channelList: [11]},
             sp: {baudRate: 115200, debug: true}, 
-        dbPath: '/tmp/shepherd.db'});
+        dbPath: path+'shepherd.db'});
 //        dbPath: '../../../iobroker-data/zigbee_0/shepherd.db'});
 // https://github.com/zigbeer/zcl-id/wiki
 var zclId = require('zcl-id');
@@ -28,6 +28,7 @@ var filterCid = 'msOccupancySensing';
 
 var activeIeee = null;
 var activeEp = 2;
+var activeCfg = {};
 
 var exit_on_sigint = true;
 process.on('SIGINT', function() {
@@ -212,8 +213,11 @@ defResultCallback = function (err, data) {
 
 function ask() {
     getEp();
-    console.log('\n####################\n'+
+    console.log(
+            '\n###########################################\n'+
             '## Active: '+activeIeee+' ep '+activeEp+'\n'+
+            '## Cfg: '+JSON.stringify(activeCfg)+'\n'+
+            '#############################################\n'+
             '0: Choose device\n'+
             '1: read                     100: printCidList\n'+
             '2: send foundation          101: printAttrList\n'+
@@ -225,10 +229,13 @@ function ask() {
             '8: toggleFilter\n'+
             '9: start listening\n'+
             '10: discover\n'+
-            '20: startPair');
+            '20: startPair\n'+
+            '30: Custom cfg\n'+
+            '35: Save settings\n'+
+            '36: Load settings');
     rl.question('Choice? ', (answer) => {
         exit_on_sigint = false;
-        if (answer == 0) {
+        if (answer === '0') {
             const devList = zserver.list();
             for (var i=0; i<devList.length; i++) {
                 var dev = devList[i];
@@ -365,6 +372,47 @@ function ask() {
             }); 
             ask();
         }
+        else if (answer == 30) {
+            rl.question('Cfg property? ', (prop) => {
+                rl.question('Cfg '+prop+' value? ', (value) => {
+                    activeCfg[prop] = parseInt(value);
+                    ask();
+                });
+            });
+        }
+        else if (answer == 35) {
+            var fs = require('fs');
+            const json = JSON.stringify({
+                actIeee: activeIeee,
+                actEp: activeEp,
+                cfg: activeCfg
+            });
+            const file = path+'setting_1.json';
+            fs.writeFile(file, json, 'utf8', function(err) {
+                if (!err) {
+                    console.log('Saved to '+file);
+                }
+                else {
+                    console.log('Save result '+err);
+                }
+                ask();
+            });
+        }
+        else if (answer == 36) {
+            var fs = require('fs');
+            fs.readFile(path+'setting_1.json', 'utf8', function (err, data){
+                if (err){
+                    console.log('Load error: '+err);
+                } 
+                else {
+                    data = JSON.parse(data); //now it an object
+                    activeCfg = data.cfg;
+                    activeIeee = data.actIeee;
+                    activeEp = data.actEp;
+                }
+                ask();
+            });
+        }
         else if (answer == 100) {
             printCidList();	
             ask();
@@ -386,66 +434,67 @@ function ask() {
 }
 
 function askCmd(defCmd, callBack) {
-	console.log(' ');
-	printCmdList();
-	var defaultCmd = zclId.foundation(defCmd).value; ;
-	rl.question('cmd? ['+zclId.foundation(defaultCmd).key+'] ', (cmd) => {
-		  if (!cmd) {
-			  cmd = zclId.foundation(defCmd).value;
-		  }
-		  else {
-			  cmd = parseInt(cmd);
-		  }
-		  callBack(cmd);
-	});
+    console.log('\n');
+    printCmdList();
+    var defaultCmd = zclId.foundation(defCmd).value; ;
+    rl.question('cmd? ['+zclId.foundation(defaultCmd).key+'] ', (cmd) => {
+        if (!cmd) {
+            cmd = zclId.foundation(defCmd).value;
+        }
+        else {
+            cmd = parseInt(cmd);
+        }
+        callBack(cmd);
+    });
 }
 
 function askCid(defCid, callBack) {
-	var defaultCid = zclId.cluster(defCid).value;
-	rl.question('cid? ['+zclId.cluster(defaultCid).key+'] ', (cid) => {
-		  if (!cid) {
-			  cid = defaultCid;
-		  }
-		  else {
-			  cid = parseInt(cid);
-		  }
-		  callBack(cid);
-	});
+    console.log('\n');
+    var defaultCid = zclId.cluster(defCid).value;
+    rl.question('cid? ['+zclId.cluster(defaultCid).key+'] ', (cid) => {
+        if (!cid) {
+            cid = defaultCid;
+        }
+        else {
+            cid = parseInt(cid);
+        }
+        callBack(cid);
+    });
 }
 
 function askAttr(cid, defaultAttrId, callBack) {
-	console.log(' ');
-	printAttrList(cid);
-	var attrDef = zclId.attr(cid, defaultAttrId);
-	var defaultName = 'not found';
-	if (typeof attrDef !== 'undefined') {
-		defaultName = attrDef.key;
-	}
-	rl.question('attr ['+defaultName+']? ', (attrId) => {
-		  if (!attrId) {	  
-			  if (typeof attrDef !== 'undefined') {
-				  attrId = attrDef.value;
-			  }
-			  attrId = attrId;
-		  }
-		  else {
-			  attrId = parseInt(attrId);
-		  }
-		  callBack(attrId);		  
-	});
+    console.log('\n');
+    printAttrList(cid);
+    var attrDef = zclId.attr(cid, defaultAttrId);
+    var defaultName = 'not found';
+    if (typeof attrDef !== 'undefined') {
+        defaultName = attrDef.key;
+    }
+    rl.question('attr ['+defaultName+']? ', (attrId) => {
+        if (!attrId) {	  
+            if (typeof attrDef !== 'undefined') {
+                attrId = attrDef.value;
+            }
+            attrId = attrId;
+        }
+        else {
+            attrId = parseInt(attrId);
+        }
+        callBack(attrId);		  
+    });
 }
 
 function askRaw(question, callBack) {
-	console.log(' ');
-	rl.question(question+' ', (value) => {
-		  if (!value) {	  
-			  value = 0;
-		  }
-		  else {
-			  value = parseInt(value);
-		  }
-		  callBack(value);		  
-	});
+    console.log('\n');
+    rl.question(question+' ', (value) => {
+        if (!value) {	  
+            value = 0;
+        }
+        else {
+            value = parseInt(value);
+        }
+        callBack(value);		  
+    });
 }
 
 function printCidList() {
@@ -544,7 +593,7 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 		zclData = [{attrId: attrId}];
 	}
 	try {
-	    ep.foundation(cid, cmd, zclData, callback);
+	    ep.foundation(cid, cmd, zclData, activeCfg, callback);
 	} catch (exception) {
 	    callback(exception);
 	}
@@ -554,9 +603,16 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 function testAttr(cid, cmd, startId, maxId) {
     var attrId = parseInt(startId);
     const maxAttrId = parseInt(maxId);
+    var errCount = 0;
 
     callBack = function (err, data) {
-        var statusCode;
+        if (err && errCount < 1) {
+            errCount++;
+            console.log('Request failed ('+err.message+'), one more try...)');
+            testAttrRun();
+        }
+        errCount = 0;
+        var statusCode = -1;
         if (Array.isArray(data)) {
             statusCode = data[0].status;
             dataType = data[0].dataType;
@@ -564,20 +620,20 @@ function testAttr(cid, cmd, startId, maxId) {
         else if (typeof data !== 'undefined'){
             statusCode = data.statusCode;
         }
-        else {
-            console.log(err);
-            console.log(data);
-        }
-        var statusString = zclId.status(statusCode).key;
-        if (statusCode == 0) {
-            var attrDef = zclId.attr(cid, attrId);
-            if (attrDef) {
-                statusString = statusString + ' ('+attrDef.key+')';
+
+        var statusString = 'unknown';
+        if (statusCode !== -1) {
+            statusString = zclId.status(statusCode).key;
+            if (statusCode == 0) {
+                var attrDef = zclId.attr(cid, attrId);
+                if (attrDef) {
+                    statusString = statusString + ' ('+attrDef.key+')';
+                }
+                statusString = '\x1b[33m'+statusString+'\x1b[0m';
             }
-            statusString = '\x1b[33m'+statusString+'\x1b[0m';
-        }
-        else {
-            statusString = '\x1b[31m'+statusString+'\x1b[0m';
+            else {
+                statusString = '\x1b[31m'+statusString+'\x1b[0m';
+            }
         }
         console.log(attrId+' of '+maxAttrId+' Status '+statusCode+": "+statusString +' result: '+JSON.stringify(data));
 
@@ -589,7 +645,7 @@ function testAttr(cid, cmd, startId, maxId) {
         testAttrRun();
     }
     testAttrRun = function() {
-        send(cid, cmd, attrId, null, null, callBack, false);		
+        send(cid, cmd, attrId, null, null, callBack, false);	
     }
     testAttrRun();
 }
