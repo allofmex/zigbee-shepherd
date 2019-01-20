@@ -201,7 +201,7 @@ defResultCallback = function (err, data) {
         statusCode = data.statusCode;
     }
 
-    if (statusCode !== -1) {
+    if (typeof statusCode == 'number' && statusCode !== -1) {
         console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
     }
     else {
@@ -221,8 +221,8 @@ function ask() {
             '0: Choose device\n'+
             '1: read                     100: printCidList\n'+
             '2: send foundation          101: printAttrList\n'+
-            '3: testRead\n'+
-            '4: attrList\n'+
+            '3: send functional\n'+
+            '4: continous poll\n'+
             '5: configReporting\n'+
             '6: changeEndpoint\n'+
             '7: testAttrList\n'+
@@ -285,12 +285,23 @@ function ask() {
             });			
         }
         else if (answer == 3) {
-            send('msTemperatureMeasurement', 'read', 0);
+            var data = {cid: 1030,
+                    cmd: 0,
+                    zclData: {attrId: -1
+                    }
+            };
+            sendData(data, defResultCallback);
         }
         else if (answer == 4) {
-            rl.question('eg. genDeviceTempCfg\ncid? ', (cid) => {
-                printAttrList(cid); 				
-            });			  
+            askCid('msOccupancySensing', (cid) => {//0x0406
+                askAttr(cid, 'pirOToUDelay', (attrId) => { //'pirOToUDelay'
+                    const poll = function() {
+                        send(cid, 'read', attrId);
+                        setTimeout(poll, 1000);
+                    }
+                    poll();
+                });
+            }); 
         }
         else if (answer == 5) {
             askCid('msOccupancySensing', (cid) => {//0x0406
@@ -373,6 +384,7 @@ function ask() {
             ask();
         }
         else if (answer == 30) {
+            console.log('Set shepherd cfg settings like manufCode or manufSpec')
             rl.question('Cfg property? ', (prop) => {
                 rl.question('Cfg '+prop+' value? ', (value) => {
                     activeCfg[prop] = parseInt(value);
@@ -406,9 +418,10 @@ function ask() {
                 } 
                 else {
                     data = JSON.parse(data); //now it an object
+                    console.log('Load '+JSON.stringify(data));
                     activeCfg = data.cfg;
-                    activeIeee = data.actIeee;
-                    activeEp = data.actEp;
+                    activeIeee = data.hasOwnProperty('actIeee') ? data.actIeee : activeIeee;
+                    activeEp = data.hasOwnProperty('actEp') ? parseInt(data.actEp) : activeEp;
                 }
                 ask();
             });
@@ -599,6 +612,10 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 	}
 }
 
+function sendData(data, callback) {
+    var ep = getEp();
+    ep.functional(data.cid, data.cmd, data.zclData, activeCfg, callback);
+}
 
 function testAttr(cid, cmd, startId, maxId) {
     var attrId = parseInt(startId);
@@ -661,6 +678,11 @@ function testAttr(cid, cmd, startId, maxId) {
  	[ { attrId: 16, status: 0, dataType: 33, attrData: 0 } ]
  	
  	
+ 	genBasic manufCode
+ 	attrId:33    powerOnSeconds
+ 	attrId: 50    usertest?   values: 0 - default, 1: green led on ANY move detection
+ 	attrId: 51    led indication?     values: 0 - default,    1: no change!?
+ 	
 msIlluminanceMeasurement
 0 of 2 Status 0: success (measuredValue) result: [{"attrId":0,"status":0,"dataType":33,"attrData":17172}]
 1 of 2 Status 0: success (minMeasuredValue) result: [{"attrId":1,"status":0,"dataType":33,"attrData":1}]
@@ -680,6 +702,31 @@ genBasic
 5 of 50 Status 0: success (modelId) result: [{"attrId":5,"status":0,"dataType":66,"attrData":"SML001"}]
 6 of 50 Status 0: success (dateCode) result: [{"attrId":6,"status":0,"dataType":66,"2018-12-30T12:30:21.563Z   ind:reported   msOccupancySensing            [ { attrId: 0, dataType: 24, attrData: 1 } ]
 
+genBasic manufCode
+30 of 60 Status 134: unsupAttribute result: [{"attrId":30,"status":134}]
+31 of 60 Status 134: unsupAttribute result: [{"attrId":31,"status":134}]
+32 of 60 Status 0: success result: [{"attrId":32,"status":0,"dataType":66,"attrData":"0:PWRON@0"}]
+33 of 60 Status 0: success result: [{"attrId":33,"status":0,"dataType":35,"attrData":5018}]
+34 of 60 Status 134: unsupAttribute result: [{"attrId":34,"status":134}]
+35 of 60 Status 134: unsupAttribute result: [{"attrId":35,"status":134}]
+36 of 60 Status 134: unsupAttribute result: [{"attrId":36,"status":134}]
+37 of 60 Status 134: unsupAttribute result: [{"attrId":37,"status":134}]
+38 of 60 Status 134: unsupAttribute result: [{"attrId":38,"status":134}]
+39 of 60 Status 134: unsupAttribute result: [{"attrId":39,"status":134}]
+40 of 60 Status 134: unsupAttribute result: [{"attrId":40,"status":134}]
+41 of 60 Status 134: unsupAttribute result: [{"attrId":41,"status":134}]
+42 of 60 Status 134: unsupAttribute result: [{"attrId":42,"status":134}]
+43 of 60 Status 134: unsupAttribute result: [{"attrId":43,"status":134}]
+44 of 60 Status 134: unsupAttribute result: [{"attrId":44,"status":134}]
+45 of 60 Status 134: unsupAttribute result: [{"attrId":45,"status":134}]
+46 of 60 Status 134: unsupAttribute result: [{"attrId":46,"status":134}]
+47 of 60 Status 134: unsupAttribute result: [{"attrId":47,"status":134}]
+48 of 60 Status 0: success result: [{"attrId":48,"status":0,"dataType":48,"attrData":0}]
+49 of 60 Status 0: success result: [{"attrId":49,"status":0,"dataType":25,"attrData":0}]
+50 of 60 Status 0: success result: [{"attrId":50,"status":0,"dataType":16,"attrData":0}]
+51 of 60 Status 0: success result: [{"attrId":51,"status":0,"dataType":16,"attrData":0}]
+52 of 60 Status 134: unsupAttribute result: [{"attrId":52,"status":134}]
+53 of 60 Status 134: unsupAttribute result: [{"attrId":53,"status":134}]
 
 
 2018-12-30T12:30:21.564Z   ind:reported   msOccupancySensing            [ { attrId: 0, dataType: 24, attrData: 1 } ]
