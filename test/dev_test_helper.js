@@ -27,7 +27,7 @@ var filterActive = false;
 var filterCid = 'msOccupancySensing';
 
 var activeIeee = null;
-var activeEp = 2;
+var activeEp = null;
 var activeCfg = {};
 
 var exit_on_sigint = true;
@@ -35,6 +35,7 @@ process.on('SIGINT', function() {
     console.log("Caught interrupt signal");
 
     if (exit_on_sigint) {
+        stop();
         process.exit();
     }
     exit_on_sigint = true;
@@ -53,6 +54,7 @@ zserver.on('ready', function () {
 //    console.log(result);
     
     zserver.acceptDevIncoming = function (devInfo, callback) {
+        console.log('acceptDevIncoming' +JSON.stringify(devInfo));
 		//if (devInfo.ieeeAddr === '0x00124b0001ce4beb')
 		//    callback(null, false);
 		//else
@@ -63,11 +65,11 @@ zserver.on('ready', function () {
 });
 
 zserver.on('error', function(err) {
-    log('error',err);
+    log(null, 'error',err);
 });
 
 zserver.on('permitJoining', function(time) {
-    log('Time left: '+time, 'permitJoining');
+    log(null, 'Time left: '+time, 'permitJoining');
 });
 
 zserver.start(function (err) {
@@ -117,40 +119,45 @@ const cidFilter = function(data) {
 	return false;
 }
 
+function stop() {
+    console.log('Stop server.');
+    zserver.stop();
+}
+
 function listen() {
     zserver.on('ind:incoming', function (dev, data) {
         var cid = dev.endpoints[2].clusters.msOccupancySensing.dir.cid;
         if (cidFilter(data)) {		return;		}
-        log(dev.endpoints[2].clusters.msOccupancySensing, 'ind:incoming');
+        log(dev, dev.endpoints[2].clusters.msOccupancySensing, 'ind:incoming');
     });
     zserver.on('ind:changed', function (dev, data) {
         if (cidFilter(data)) {		return;		}
-        log(data, 'ind:changed');
+        log(dev, data, 'ind:changed');
     });
     zserver.on('ind:status', function (dev, data) {
         if (cidFilter(data)) {		return;		}
-        log(data, 'ind:status');
+        log(dev, data, 'ind:status');
     });
     zserver.on('ind:statusChange', function (dev, data) {
         if (cidFilter(data)) {		return;		}
-        log(data, 'ind:statusChange');
+        log(dev, data, 'ind:statusChange');
     });
     zserver.on('ind:attReport', function (dev, data) {
         if (cidFilter(data)) {		return;		}
-        log(data, 'ind:attReport');
+        log(dev, data, 'ind:attReport');
     });
     zserver.on('ind:reported', function (dev, cid, data2) {
         if (cidFilter(cid)) {		return;		}
-        log(data2, 'ind:reported ', zclId.cluster(cid).key);
+        log(dev, data2, 'ind:reported ', zclId.cluster(cid).key);
     });
 
     zserver.on('ind:cmd', function (dev, data) {
         if (cidFilter(cid)) {		return;		}
-        log(data, 'ind:cmd', zclId.cluster(cid).key);
+        log(dev, data, 'ind:cmd', zclId.cluster(cid).key);
     });
     zserver.on('ind:interview', function (dev, data) {
         if (cidFilter(data)) {		return;		}
-        log(data, 'ind:interview');
+        log(dev, data, 'ind:interview');
     });
 
 }
@@ -158,16 +165,26 @@ function listen() {
 function getEp() {
     if (activeIeee == null) {
         activeIeee = zserver.list().length > 1 ?  zserver.list()[1].ieeeAddr : null;
+        if (activeIeee != null && activeEp == null) {
+            activeEp = zserver.list()[1].epList[0];
+        }
     }
-    if (activeIeee == null) {
+    if (activeEp === null) {
         return null;
     }
     var ep = zserver.find(activeIeee, activeEp);    // returns undefined if not found
     return ep;
 }
 
-function log(data, tag, cid) {
+function log(dev, data, tag, cid) {
     var time = new Date();
+    var devString;
+    if (dev && typeof dev === 'object' && dev.hasOwnProperty('device')) {
+        devString = '...'+dev.device.ieeeAddr.substring(14,18);
+    }
+    else {
+        devString = ''.padEnd(7);
+    }
     if (typeof tag !== 'string') {
         tag = '';
     }
@@ -178,18 +195,18 @@ function log(data, tag, cid) {
     else {		
         tag = tag.padEnd(45, ' ');
     }
-    process.stdout.write("\n"+time.toISOString()+"   "+tag);
+    process.stdout.write("\n"+time.toISOString()+'   '+devString+'   '+tag);
     process.stdout.write(util.inspect(data, logset));
 }
 
-defResultCallback = function (err, data) {
+defResultCallback = function (err, data, returnMenu = true) {
     if (err) {
         console.log(err);
         ask();
         return;
     }
 
-    console.log('\nR ');
+    console.log('\nResult: ');
     console.log(data);
     var statusCode = -1;
     var dataType;
@@ -202,12 +219,16 @@ defResultCallback = function (err, data) {
     }
 
     if (typeof statusCode == 'number' && statusCode !== -1) {
-        console.log("Statuscode "+statusCode+": "+zclId.status(statusCode).key);
+        var statusInfo = zclId.status(statusCode);
+        var statusString = statusInfo ? statusInfo.key : '?';
+        console.log("Statuscode "+statusCode+": "+statusString);
     }
     else {
         console.log("Empty callback!");
     }
-    ask();
+    if (returnMenu) {
+        ask();
+    }
 };
 
 
@@ -219,27 +240,27 @@ function ask() {
             '## Cfg: '+JSON.stringify(activeCfg)+'\n'+
             '#############################################\n'+
             '0: Choose device\n'+
-            '1: read                     100: printCidList\n'+
-            '2: send foundation          101: printAttrList\n'+
+            '1: read                        51: changeEndpoint         100: printCidList\n'+
+            '2: send foundation                                     101: printAttrList\n'+
             '3: send functional\n'+
             '4: continous poll\n'+
             '5: configReporting\n'+
-            '6: changeEndpoint\n'+
+            '6: send raw\n'+
             '7: testAttrList\n'+
-            '8: toggleFilter\n'+
+            '8: bindDevice                  58: toggleFilter\n'+
             '9: start listening\n'+
             '10: discover\n'+
             '20: startPair\n'+
             '30: Custom cfg\n'+
             '35: Save settings\n'+
-            '36: Load settings');
+            '36: Load settings           q: quit');
     rl.question('Choice? ', (answer) => {
         exit_on_sigint = false;
         if (answer === '0') {
             const devList = zserver.list();
             for (var i=0; i<devList.length; i++) {
                 var dev = devList[i];
-                console.log(i+': '+dev.manufName+' '+dev.modelId+' '+dev.ieeeAddr);
+                console.log(i+': '+dev.manufName+' '+dev.modelId+' '+dev.ieeeAddr+' epList '+dev.epList);
             }
             rl.question('Select device? ', (answer) => {
                 activeIeee = devList[answer].ieeeAddr;
@@ -285,12 +306,17 @@ function ask() {
             });			
         }
         else if (answer == 3) {
-            var data = {cid: 1030,
-                    cmd: 0,
-                    zclData: {attrId: -1
-                    }
-            };
-            sendData(data, defResultCallback);
+            askCid('genGroups', (cid) => {
+                askFunctionalCmd(0, cid, (cmd) => {
+                    var data = {
+                            cid: cid,
+                            cmd: cmd,
+                            zclData: { }
+                    };
+                    sendData(data, defResultCallback);
+                });
+            });
+            
         }
         else if (answer == 4) {
             askCid('msOccupancySensing', (cid) => {//0x0406
@@ -306,9 +332,9 @@ function ask() {
         else if (answer == 5) {
             askCid('msOccupancySensing', (cid) => {//0x0406
                 askAttr(cid, 'pirOToUDelay', (attrId) => {
-                    askRaw('MinValue? ', (minVal) => {
-                        askRaw('MaxValue? ', (maxVal) => {
-                            askRaw('ChangeValue? ', (chgBal) => {
+                    askRaw('MinInverval (s)? ', (minVal) => {
+                        askRaw('MaxIntervall (s)? ', (maxVal) => {
+                            askRaw('Min value change to be reported? ', (chgBal) => {
                                 var ep = getEp();
                                 var result = ep.report(cid, attrId, minVal, maxVal, chgBal, defResultCallback);
 //                              if (result) {
@@ -324,12 +350,59 @@ function ask() {
             });	
         }
         else if (answer == 6) {
-            askRaw('Endpoint? ', (ep) => {
-                if (ep) {
-                    activeEp = ep;
-                    console.log('ActiveEp set to '+activeEp);
-                    ask();
-                }
+            askCid('hvacThermostat', (cid) => {
+                askCmd('read', (cmd) => {
+                    var zclData = {};
+                    const askZcl = function() {
+                        askRaw('PropertyName?', (propName) => {
+                            if (propName === null) {
+                                var ep = getEp();
+                                try {
+                                    console.log('Send foundation (cid '+cid+' cmd '+cmd+ ' zcl '+JSON.stringify(zclData)+' cfg '+JSON.stringify(activeCfg)+')');
+                                    var maxLoop = -1;
+                                    if (zclData.hasOwnProperty('attrId')) {
+                                        var dashIdx = (''+zclData.attrId).indexOf('-');
+                                        if (dashIdx > 0) {
+                                            maxLoop = parseInt(zclData.attrId.substring(dashIdx+1));
+                                            zclData.attrId = parseInt(zclData.attrId.substring(0, dashIdx));
+                                        }
+                                    }
+                                    const run = function() {
+                                        ep.foundation(cid, cmd, [zclData], activeCfg, function(err, data) {
+                                            if (err) {
+                                                console.log(err);
+                                                askZcl();
+                                            }
+                                            else {
+                                                defResultCallback(err, data, false);
+                                            }
+                                            if (maxLoop !== -1 && maxLoop > zclData.attrId) {
+                                                zclData.attrId++;
+                                                console.log('\nPoll next: '+zclData.attrId+'/'+maxLoop);
+                                                run();
+                                            }
+                                            else {
+                                                ask();
+                                            }
+                                        });
+                                    };
+                                    run();
+                                } catch (exception) {
+                                    console.log(exception.message);
+                                    console.log(exception.trace);
+                                    askZcl();
+                                }
+                            }
+                            else {
+                                askRaw('PropertyValue?', (propVal) => {
+                                    zclData[propName] = propVal;
+                                    askZcl();
+                                });
+                            }
+                        })
+                    };
+                    askZcl();
+                });
             });
         }
         else if (answer == 7) {
@@ -348,14 +421,10 @@ function ask() {
             });
         }
         else if (answer == 8) {
-            filterActive = !filterActive;
-            if (filterActive) {
-                console.log('Filter on ('+zclId.cluster(filterCid).value + ', '+zclId.cluster(filterCid).key +')');
-            }
-            else {
-                console.log('Filter off');
-            }
-            ask();
+            askCid('msOccupancySensing', (cid) => {
+                var coordinator = zserver.find(zserver.list()[0].ieeeAddr, 1);
+                getEp().bind(cid, coordinator, defResultCallback);
+            });
         }
         else if (answer == 9) {
             listen();
@@ -426,6 +495,25 @@ function ask() {
                 ask();
             });
         }
+        else if (answer == 51) {
+            askRaw('Endpoint? ', (ep) => {
+                if (ep) {
+                    activeEp = ep;
+                    console.log('ActiveEp set to '+activeEp);
+                    ask();
+                }
+            });
+        }
+        else if (answer == 58) {
+            filterActive = !filterActive;
+            if (filterActive) {
+                console.log('Filter on ('+zclId.cluster(filterCid).value + ', '+zclId.cluster(filterCid).key +')');
+            }
+            else {
+                console.log('Filter off');
+            }
+            ask();
+        }
         else if (answer == 100) {
             printCidList();	
             ask();
@@ -437,6 +525,11 @@ function ask() {
                 ask();
             });
         }
+        else if(answer === 'q') {
+            console.log('Exiting...');
+            stop();
+            process.exit();
+        }
         else {
             console.log("undefined");
             ask();
@@ -447,12 +540,36 @@ function ask() {
 }
 
 function askCmd(defCmd, callBack) {
+    askTypeCmd(defCmd, 'foundation', null, callBack);
+}
+
+function askFunctionalCmd(defCmd, cid, callBack) {
+    askTypeCmd(defCmd, 'functional', cid, callBack);
+}
+
+function askTypeCmd(defCmd, type, cid, callBack) {
     console.log('\n');
-    printCmdList();
-    var defaultCmd = zclId.foundation(defCmd).value; ;
-    rl.question('cmd? ['+zclId.foundation(defaultCmd).key+'] ', (cmd) => {
+    var defaultCmd, defaultCmdKey;
+    if (type === 'foundation') {
+        printCmdList();
+        var pair = zclId.foundation(defCmd);
+        defaultCmd = pair ? pair.value : -1;
+        defaultCmdKey = pair ? pair.key : "-1";
+    }
+    else if (type === 'functional') {
+        printFunctionalCmdList(cid);
+        defaultCmd = zclId.functional(cid, defCmd).value;
+        defaultCmdKey = zclId.functional(cid, defCmd).key;
+    }
+    rl.question('cmd? ['+defaultCmdKey+'] ', (cmd) => {
         if (!cmd) {
-            cmd = zclId.foundation(defCmd).value;
+            if (type === 'foundation') {
+                cmd = zclId.foundation(defCmd).value;
+            }
+            else if (type === 'functional') {
+                printFunctionalCmdList(cid);
+                cmd = zclId.functional(cid, defCmd).value;
+            }
         }
         else {
             cmd = parseInt(cmd);
@@ -500,13 +617,17 @@ function askAttr(cid, defaultAttrId, callBack) {
 function askRaw(question, callBack) {
     console.log('\n');
     rl.question(question+' ', (value) => {
+        var result;
         if (!value) {	  
-            value = 0;
+            result = null;
         }
         else {
-            value = parseInt(value);
+            result = Number(value);
+            if (isNaN(result)) {
+                result = value;
+            }
         }
-        callBack(value);		  
+        callBack(result);		  
     });
 }
 
@@ -533,6 +654,14 @@ function printCmdList() {
 		  }
 	  }
 }
+function printFunctionalCmdList(cid) {
+    var cid = zclId.cluster(cid).key;
+    var cluster = zclId._getCluster(cid);
+    if (typeof cluster != 'undefined') {
+        return cluster.cmd !== null ? cluster.cmd._enumMap : null;
+    }
+    return null;
+}
 
 function printAttrList(cid) {
 	var attrList = zclId.attrList(cid);
@@ -549,15 +678,6 @@ function printTypeList() {
 			  console.log(typeDef.value+ ': '+ typeDef.key  );
 		  }
 	  }
-}
-
-function read() {
-	var ep = getEp();
-//  console.log(ep);
-	ep.read('genBasic', 'manufacturerName', function (err, data) {
-		console.log("read "+err+",  data " + data);   // 'TexasInstruments'
-	    ask();
-	});
 }
 
 function send(cid, cmd, attrId, type, value, callback, log = true) {
@@ -614,7 +734,10 @@ function send(cid, cmd, attrId, type, value, callback, log = true) {
 
 function sendData(data, callback) {
     var ep = getEp();
-    ep.functional(data.cid, data.cmd, data.zclData, activeCfg, callback);
+    console.log('Send to '+activeIeee+' cid 0x' + data.cid.toString(16)+' ('+data.cid+') '
+            +'cmd 0x' + data.cmd.toString(16)+ ' ('+data.cmd 
+            + ') '+JSON.stringify(data.zclData));
+    ep.functional(''+data.cid, data.cmd, data.zclData, activeCfg, callback);
 }
 
 function testAttr(cid, cmd, startId, maxId) {
