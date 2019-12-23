@@ -169,7 +169,7 @@ class Endpoint extends Entity {
 
     public async write(
         clusterKey: number | string, attributes: KeyValue, options?: Options
-    ): Promise<void> {
+    ): Promise<KeyValue> {
         options = this.getOptionsWithDefaults(options, true);
         const cluster = Zcl.Utils.getCluster(clusterKey);
         const payload: {attrId: number; dataType: number; attrData: number| string | boolean}[] = [];
@@ -188,9 +188,10 @@ class Endpoint extends Entity {
             Zcl.FrameType.GLOBAL, Zcl.Direction.CLIENT_TO_SERVER, options.disableDefaultResponse,
             options.manufacturerCode, ZclTransactionSequenceNumber.next(), 'write', cluster.ID, payload
         );
-        await Entity.adapter.sendZclFrameNetworkAddressWithResponse(
+        const result = await Entity.adapter.sendZclFrameNetworkAddressWithResponse(
             this.deviceNetworkAddress, this.ID, frame, options.timeout, options.defaultResponseTimeout
         );
+        return ZclFrameConverter.attributeKeyValue(result.frame);
     }
 
     public async read(
@@ -338,7 +339,7 @@ class Endpoint extends Entity {
         const cluster = Zcl.Utils.getCluster(clusterKey);
         const command = cluster.getCommand(commandKey);
         const hasResponse = command.hasOwnProperty('response');
-        options = this.getOptionsWithDefaults(options, hasResponse);
+        options = this.getOptionsWithDefaults(options, hasResponse || !options.response);
 
         for (const parameter of command.parameters) {
             if (!payload.hasOwnProperty(parameter.name)) {
@@ -351,7 +352,7 @@ class Endpoint extends Entity {
             options.manufacturerCode, ZclTransactionSequenceNumber.next(), command.ID, cluster.ID, payload
         );
 
-        if (hasResponse) {
+        if (hasResponse || options.response) {
             const result = await Entity.adapter.sendZclFrameNetworkAddressWithResponse(
                 this.deviceNetworkAddress, this.ID, frame, options.timeout, options.defaultResponseTimeout,
             );
